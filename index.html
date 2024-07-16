@@ -1,0 +1,195 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Public Chat</title>
+  <link rel="stylesheet" href="https://fonts.googleapis.com/icon?family=Material+Icons">
+  <style>
+    body {
+      font-family: 'Roboto', sans-serif;
+      margin: 0;
+      padding: 20px;
+    }
+    .chat-container {
+      max-width: 600px;
+      margin: 0 auto;
+      border: 1px solid #ccc;
+      border-radius: 5px;
+      overflow: hidden;
+      display: flex;
+      flex-direction: column;
+      height: 88vh;
+    }
+    .message {
+      background-color: #f1f0f0;
+      padding: 10px;
+      margin: 10px;
+      border-radius: 5px;
+      word-wrap: break-word;
+    }
+    .message.user {
+      background-color: #dcf8c6;
+      align-self: flex-end;
+    }
+    .message .admin-username {
+      color: red;
+    }
+    .message .metadata {
+      font-size: 0.8em;
+      color: #888;
+      margin-top: 5px;
+    }
+    .message.user .metadata {
+      text-align: right;
+    }
+    .message-list {
+      flex: 1;
+      padding: 10px;
+      overflow-y: auto;
+      scroll-behavior: smooth;
+    }
+    .message-input-container {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      padding: 10px;
+      background-color: #eee;
+      border-top: 1px solid #ccc;
+    }
+    .message-input {
+      flex: 1;
+      padding: 8px;
+      margin-right: 10px;
+      border-radius: 20px;
+      border: 1px solid #ccc;
+      width: 170px;
+    }
+    #send-btn {
+      height: 36px;
+    }
+  </style>
+</head>
+<body>
+  <div class="chat-container">
+    <div class="message-list" id="message-list"></div>
+    <div class="message-input-container">
+      <input type="text" id="message-input" class="message-input" placeholder="Type Message...">
+      <button id="send-btn">Send!</button>
+    </div>
+  </div>
+
+  <script type="module">
+    import { initializeApp } from "https://www.gstatic.com/firebasejs/10.12.3/firebase-app.js";
+    import { getDatabase, ref, push, onValue, set, remove, get } from "https://www.gstatic.com/firebasejs/10.12.3/firebase-database.js";
+
+    const firebaseConfig = {
+      apiKey: "YOUR_API_KEY",
+      authDomain: "YOUR_AUTH_DOMAIN",
+      databaseURL: "YOUR_DATABASE_URL",
+      projectId: "YOUR_PROJECT_ID",
+      storageBucket: "YOUR_STORAGE_BUCKET",
+      messagingSenderId: "YOUR_MESSAGING_SENDER_ID",
+      appId: "YOUR_APP_ID",
+      measurementId: "YOUR_MEASUREMENT_ID"
+    };
+
+    const app = initializeApp(firebaseConfig);
+    const database = getDatabase(app);
+    const messagesRef = ref(database, 'messages');
+    const usersRef = ref(database, 'users');
+
+    const messageList = document.getElementById('message-list');
+    const messageInput = document.getElementById('message-input');
+    const sendButton = document.getElementById('send-btn');
+
+    async function getUsername() {
+      let username = localStorage.getItem('username');
+      if (!username) {
+        const newUserKey = push(usersRef).key;
+        username = 'User' + newUserKey.substr(1, 6);
+        const newUserRef = ref(database, `users/${username}`);
+        await set(newUserRef, { username, isAdmin: false });
+        localStorage.setItem('username', username);
+      }
+      return username;
+    }
+
+    async function isAdmin(username) {
+      const userSnapshot = await get(ref(database, `users/${username}`));
+      return userSnapshot.val()?.isAdmin || false;
+    }
+
+    function parseBBCode(text) {
+      return text
+        .replace(/\[img\](https?:\/\/[^\]]+|http:\/\/[^\]]+)\[\/img\]/gi, '<img src="$1" style="max-width: 25%; max-height: 200px;">')
+        .replace(/\[color=(#[0-9a-f]{6}|[a-z]+)\](.*?)\[\/color\]/gi, '<span style="color:$1">$2</span>')
+        .replace(/\[b\](.*?)\[\/b\]/gi, '<strong>$1</strong>')
+        .replace(/\[i\](.*?)\[\/i\]/gi, '<em>$1</em>')
+        .replace(/\[u\](.*?)\[\/u\]/gi, '<u>$1</u>')
+        .replace(/\[size=(\d+)\](.*?)\[\/size\]/gi, '<span style="font-size:$1%">$2</span>')
+        .replace(/\[email\](.*?)\[\/email\]/gi, '<a href="mailto:$1">$1</a>')
+    }
+
+    async function displayMessage(key, username, message, timestamp) {
+      const formattedTime = new Date(timestamp).toLocaleString();
+      const messageElement = document.createElement('div');
+      messageElement.classList.add('message');
+      if (username === await getUsername()) messageElement.classList.add('user');
+      
+      const usernameSpan = document.createElement('span');
+      usernameSpan.innerHTML = `<strong>${username}:</strong>`;
+      if (await isAdmin(username)) {
+        usernameSpan.classList.add('admin-username');
+      }
+
+      const messageContent = document.createElement('span');
+      messageContent.innerHTML = ` ${parseBBCode(message)}`;
+
+      messageElement.appendChild(usernameSpan);
+      messageElement.appendChild(messageContent);
+
+      const metadataDiv = document.createElement('div');
+      metadataDiv.classList.add('metadata');
+      metadataDiv.textContent = formattedTime;
+
+      messageElement.appendChild(metadataDiv);
+
+      if (await isAdmin(await getUsername())) {
+        const deleteButton = document.createElement('button');
+        deleteButton.classList.add('delete-btn');
+        deleteButton.textContent = 'Delete!';
+        deleteButton.addEventListener('click', () => {
+          remove(ref(database, `messages/${key}`));
+        });
+        messageElement.appendChild(deleteButton);
+      }
+
+      messageList.appendChild(messageElement);
+      messageList.scrollTop = messageList.scrollHeight;
+    }
+
+    sendButton.addEventListener('click', async () => {
+      const message = messageInput.value.trim();
+      const username = await getUsername();
+      if (message) {
+        const timestamp = Date.now();
+        await push(messagesRef, { username, message, timestamp });
+        messageInput.value = '';
+      } else {
+        alert('Enter Message!');
+      }
+    });
+
+    onValue(messagesRef, (snapshot) => {
+      const messages = snapshot.val();
+      messageList.innerHTML = '';
+      for (let key in messages) {
+        const { username, message, timestamp } = messages[key];
+        displayMessage(key, username, message, timestamp);
+      }
+    });
+
+  </script>
+</body>
+</html>
