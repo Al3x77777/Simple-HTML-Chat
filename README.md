@@ -6,6 +6,7 @@ Replace Firebase Config In HTML With Yours.
 There Is Also An Admin Panel In Firebase users/username/isAdmin. Change It From "false" To "true" To Get Admin Panel In Chat. Admins Can Delete His Own Messages And Messages Of Other Users And Also Have Red Username.
 
 It Also Supports Some BBCode Tags: [img], [color], [b], [i], [u], [size], [email].
+
 Example: [img]https://example.com/image.jpg[/img]
 
 ![IMG](https://github.com/user-attachments/assets/857c431d-0c25-4844-ad98-26c09d6fce3a)
